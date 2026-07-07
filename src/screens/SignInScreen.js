@@ -10,7 +10,6 @@ export default function SignInScreen({ navigation }) {
   const handleSignIn = async () => {
     try {
       await signInWithFallback(email.trim(), password);
-      navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
     } catch (error) {
       Alert.alert('Sign In Failed', error.message);
     }

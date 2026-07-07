@@ -27,7 +27,7 @@ export default function FeedScreen() {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <View style={styles.card}>
-            {item.photoUrl ? <Image source={{ uri: item.photoUrl }} style={styles.photo} /> : null}
+            {item.photo_url ? <Image source={{ uri: item.photo_url }} style={styles.photo} /> : null}
             <View style={styles.meta}>
               <Text style={styles.status}>{item.status === 'completed' ? 'Completed' : 'Missed'}</Text>
               <Text style={styles.date}>{format(new Date(item.date), 'MMM d, yyyy')}</Text>

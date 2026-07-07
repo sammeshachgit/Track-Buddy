@@ -11,7 +11,6 @@ export default function SignUpScreen({ navigation }) {
   const handleSignUp = async () => {
     try {
       await signUpWithFallback(email.trim(), password, name.trim() || 'Fitness Fan');
-      navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
     } catch (error) {
       Alert.alert('Sign Up Failed', error.message);
     }

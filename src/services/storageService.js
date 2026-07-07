@@ -1,202 +1,156 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from './supabaseClient';
+import * as FileSystem from 'expo-file-system/legacy';
 
-const CURRENT_USER_KEY = '@fitness_streak_current_user';
-const USERS_KEY = '@fitness_streak_users';
-const ATTENDANCE_KEY = '@fitness_streak_attendance';
-const GROUPS_KEY = '@fitness_streak_groups';
+async function ensureUserProfile(user) {
+  if (!user) return null;
 
-let currentUser = null;
-const authListeners = [];
-let initialized = false;
-
-async function loadCurrentUser() {
-  if (!initialized) {
-    initialized = true;
-    try {
-      const raw = await AsyncStorage.getItem(CURRENT_USER_KEY);
-      currentUser = raw ? JSON.parse(raw) : null;
-    } catch {
-      currentUser = null;
-    }
+  const { data, error } = await supabase.from('users').select('*').eq('id', user.id).maybeSingle();
+  if (error) throw error;
+  if (!data) {
+    const profile = {
+      id: user.id,
+      email: user.email,
+      display_name: user.user_metadata?.displayName || user.email?.split('@')[0] || 'Fitness Fan',
+      current_streak: 0,
+      longest_streak: 0,
+      total_workouts: 0,
+      last_active_date: null,
+      photo_url: user.user_metadata?.photoURL || null
+    };
+    const { data: inserted, error: insertError } = await supabase.from('users').insert(profile).single();
+    if (insertError) throw insertError;
+    return inserted;
   }
-  return currentUser;
-}
-
-function notifyAuthState() {
-  authListeners.forEach((callback) => callback(currentUser));
-}
-
-async function getJson(key, defaultValue) {
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    return raw ? JSON.parse(raw) : defaultValue;
-  } catch {
-    return defaultValue;
-  }
-}
-
-async function setJson(key, value) {
-  await AsyncStorage.setItem(key, JSON.stringify(value));
+  if (error) throw error;
+  return data;
 }
 
 export function onAuthState(callback) {
-  authListeners.push(callback);
-  loadCurrentUser().then(() => callback(currentUser));
+  const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    callback(session?.user ?? null);
+  });
+
+  supabase.auth.getSession().then(({ data }) => callback(data.session?.user ?? null));
+
   return () => {
-    const index = authListeners.indexOf(callback);
-    if (index !== -1) authListeners.splice(index, 1);
+    authListener.subscription.unsubscribe();
   };
-}
-
-export async function getCurrentUser() {
-  await loadCurrentUser();
-  return currentUser;
-}
-
-async function saveCurrentUser() {
-  if (currentUser) {
-    await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(currentUser));
-  } else {
-    await AsyncStorage.removeItem(CURRENT_USER_KEY);
-  }
-}
-
-async function getUsers() {
-  return getJson(USERS_KEY, []);
-}
-
-async function saveUsers(users) {
-  return setJson(USERS_KEY, users);
-}
-
-async function getAttendance() {
-  return getJson(ATTENDANCE_KEY, []);
-}
-
-async function saveAttendance(attendance) {
-  return setJson(ATTENDANCE_KEY, attendance);
-}
-
-async function getGroupsData() {
-  return getJson(GROUPS_KEY, []);
-}
-
-async function saveGroups(groups) {
-  return setJson(GROUPS_KEY, groups);
-}
-
-async function createLocalUser(email, displayName) {
-  const users = await getUsers();
-  let user = users.find((item) => item.email === email);
-  if (!user) {
-    user = {
-      uid: `user-${Date.now()}`,
-      email,
-      displayName: displayName || 'Fitness Fan',
-      currentStreak: 0,
-      longestStreak: 0,
-      lastActiveDate: null,
-      totalWorkouts: 0,
-      photoURL: null
-    };
-    users.push(user);
-    await saveUsers(users);
-    console.log('Created local user record:', user.uid);
-  }
-  currentUser = user;
-  await saveCurrentUser();
-  notifyAuthState();
-  return user;
 }
 
 export async function signUpWithFallback(email, password, displayName) {
-  return createLocalUser(email, displayName);
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { displayName }
+    }
+  });
+  if (error) throw error;
+  const user = data.user || data.session?.user || null;
+  if (user) {
+    await ensureUserProfile(user);
+  }
+  return user;
 }
 
 export async function signInWithFallback(email, password) {
-  const users = await getUsers();
-  const user = users.find((item) => item.email === email);
-  if (user) {
-    currentUser = user;
-    await saveCurrentUser();
-    notifyAuthState();
-    return user;
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password
+  });
+  if (error) throw error;
+  if (data.user) {
+    await ensureUserProfile(data.user);
   }
-  return createLocalUser(email, 'Fitness Fan');
+  return data.user;
 }
 
 export async function signOutUser() {
-  currentUser = null;
-  await saveCurrentUser();
-  notifyAuthState();
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
 }
 
-export async function uploadPhoto(fileUri, fileName) {
-  return fileUri;
+export async function getCurrentUser() {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.user ?? null;
 }
 
 export async function getUserData(userId) {
-  const users = await getUsers();
-  return users.find((item) => item.uid === userId) || null;
+  const { data, error } = await supabase.from('users').select('*').eq('id', userId).single();
+  if (error && error.details?.includes('Result contains no rows')) {
+    return null;
+  }
+  if (error) throw error;
+  return data;
 }
 
 export async function updateUserDoc(userId, data) {
-  const users = await getUsers();
-  const index = users.findIndex((item) => item.uid === userId);
-  if (index === -1) return null;
-  users[index] = { ...users[index], ...data };
-  await saveUsers(users);
-  if (currentUser?.uid === userId) {
-    currentUser = users[index];
-    await saveCurrentUser();
-    notifyAuthState();
-  }
-  return users[index];
-}
-
-export async function getGroups() {
-  return getGroupsData();
+  const { data: updated, error } = await supabase.from('users').update(data).eq('id', userId).single();
+  if (error) throw error;
+  return updated;
 }
 
 export async function getAllUsers() {
-  return getUsers();
-}
-
-export async function createGroup(groupData) {
-  const groups = await getGroupsData();
-  const newGroup = {
-    id: `group-${Date.now()}`,
-    ...groupData,
-    members: groupData.members || [],
-    createdAt: new Date().toISOString()
-  };
-  groups.push(newGroup);
-  await saveGroups(groups);
-  return newGroup;
+  const { data, error } = await supabase.from('users').select('*');
+  if (error) throw error;
+  return data;
 }
 
 export async function createAttendanceRecord(userId, dateKey, status, photoUrl, type) {
-  const attendance = await getAttendance();
-  const record = {
-    id: `attendance-${userId}-${dateKey}`,
-    userId,
+  const payload = {
+    user_id: userId,
     date: dateKey,
     status,
-    photoUrl: photoUrl || null,
+    photo_url: photoUrl || null,
     type: type || null,
-    updatedAt: new Date().toISOString()
+    updated_at: new Date().toISOString()
   };
-  const existingIndex = attendance.findIndex((item) => item.id === record.id);
-  if (existingIndex !== -1) {
-    attendance[existingIndex] = record;
-  } else {
-    attendance.push(record);
-  }
-  await saveAttendance(attendance);
-  return record;
+
+  const { data, error } = await supabase.from('attendance').insert(payload).single();
+  if (error) throw error;
+  return data;
 }
 
 export async function getAttendanceForUser(userId) {
-  const attendance = await getAttendance();
-  return attendance.filter((item) => item.userId === userId).sort((a, b) => (a.date < b.date ? 1 : -1));
+  const { data, error } = await supabase.from('attendance').select('*').eq('user_id', userId).order('date', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+export async function uploadPhoto(fileUri, fileName) {
+  const fileInfo = await FileSystem.getInfoAsync(fileUri);
+  if (!fileInfo.exists) {
+    throw new Error('Selected photo file not found');
+  }
+
+  const fileBase64 = await FileSystem.readAsStringAsync(fileUri, {
+    encoding: FileSystem.EncodingType.Base64
+  });
+  const fileExt = fileName.split('.').pop();
+  const mimeType = `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
+
+  const { data, error } = await supabase.storage.from('workout-photos').upload(fileName, fileBase64, {
+    cacheControl: '3600',
+    upsert: true,
+    contentType: mimeType,
+    uploadType: 'base64'
+  });
+
+  if (error) throw error;
+
+  const { publicUrl, error: urlError } = supabase.storage.from('workout-photos').getPublicUrl(data.path);
+  if (urlError) throw urlError;
+  return publicUrl;
+}
+
+export async function getGroups() {
+  const { data, error } = await supabase.from('groups').select('*');
+  if (error) throw error;
+  return data;
+}
+
+export async function createGroup(groupData) {
+  const { data, error } = await supabase.from('groups').insert([{ ...groupData, created_at: new Date().toISOString() }]).single();
+  if (error) throw error;
+  return data;
 }

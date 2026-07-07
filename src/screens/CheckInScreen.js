@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { createAttendanceRecord, getCurrentUser, getUserData, updateUserDoc, uploadPhoto } from '../services/storageService';
@@ -9,17 +9,27 @@ import { StatusBar } from 'expo-status-bar';
 export default function CheckInScreen() {
   const [workoutType, setWorkoutType] = useState('Gym');
   const [photoUri, setPhotoUri] = useState(null);
+  const [uploadedPhotoUrl, setUploadedPhotoUrl] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const handlePickPhoto = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permission required', 'Camera roll access is required to upload workout photos.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaType.Images, quality: 0.7 });
-    if (!result.cancelled) {
-      setPhotoUri(result.uri);
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert('Permission required', 'Camera roll access is required to upload workout photos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        quality: 0.7,
+        allowsEditing: false
+      });
+
+      if (!result.canceled && result.assets?.length > 0) {
+        setPhotoUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      Alert.alert('Photo picker failed', error.message || 'Unable to open image library.');
     }
   };
 
@@ -33,22 +43,23 @@ export default function CheckInScreen() {
       const today = format(new Date(), 'yyyy-MM-dd');
       let photoUrl = null;
       if (photoUri) {
-        const fileName = `${currentUser.uid}_${today}.jpg`;
+        const fileName = `${currentUser.id}_${today}.jpg`;
         photoUrl = await uploadPhoto(photoUri, fileName);
+        setUploadedPhotoUrl(photoUrl);
       }
-      await createAttendanceRecord(currentUser.uid, today, 'completed', photoUrl, workoutType);
-      const data = await getUserData(currentUser.uid);
+      await createAttendanceRecord(currentUser.id, today, 'completed', photoUrl, workoutType);
+      const data = await getUserData(currentUser.id);
       if (data) {
-        const lastActive = data.lastActiveDate ? new Date(data.lastActiveDate) : null;
+        const lastActive = data.last_active_date ? new Date(data.last_active_date) : null;
         const yesterday = new Date(Date.now() - 86400000);
         const isYesterday = lastActive && format(lastActive, 'yyyy-MM-dd') === format(yesterday, 'yyyy-MM-dd');
-        const nextStreak = isYesterday ? (data.currentStreak || 0) + 1 : 1;
-        const longestStreak = Math.max(data.longestStreak || 0, nextStreak);
-        await updateUserDoc(currentUser.uid, {
-          currentStreak: nextStreak,
-          longestStreak,
-          lastActiveDate: new Date().toISOString(),
-          totalWorkouts: (data.totalWorkouts || 0) + 1
+        const nextStreak = isYesterday ? (data.current_streak || 0) + 1 : 1;
+        const longestStreak = Math.max(data.longest_streak || 0, nextStreak);
+        await updateUserDoc(currentUser.id, {
+          current_streak: nextStreak,
+          longest_streak: longestStreak,
+          last_active_date: new Date().toISOString(),
+          total_workouts: (data.total_workouts || 0) + 1
         });
         Alert.alert('Check-in saved', `Your streak is now ${nextStreak} days.`);
       }
@@ -71,6 +82,17 @@ export default function CheckInScreen() {
         placeholder="Workout type (gym, run, yoga...)"
         placeholderTextColor="#777"
       />
+      {photoUri ? (
+        <View style={styles.previewContainer}>
+          <Image source={{ uri: photoUri }} style={styles.previewImage} />
+        </View>
+      ) : null}
+      {uploadedPhotoUrl ? (
+        <View style={styles.uploadedPreviewContainer}>
+          <Text style={styles.uploadedLabel}>Uploaded image</Text>
+          <Image source={{ uri: uploadedPhotoUrl }} style={styles.previewImage} />
+        </View>
+      ) : null}
       <TouchableOpacity style={styles.photoButton} onPress={handlePickPhoto}>
         <Text style={styles.photoButtonText}>{photoUri ? 'Change photo' : 'Add photo'}</Text>
       </TouchableOpacity>
@@ -126,5 +148,31 @@ const styles = StyleSheet.create({
   checkInText: {
     color: '#090909',
     fontWeight: '700'
+  },
+  previewContainer: {
+    marginBottom: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#333'
+  },
+  uploadedPreviewContainer: {
+    marginBottom: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#333'
+  },
+  previewImage: {
+    width: '100%',
+    height: 220,
+    resizeMode: 'cover'
+  },
+  uploadedLabel: {
+    color: '#ff8c00',
+    fontWeight: '700',
+    marginBottom: 8,
+    paddingHorizontal: 8,
+    paddingTop: 8
   }
 });

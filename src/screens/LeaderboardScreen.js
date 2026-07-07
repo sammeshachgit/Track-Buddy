@@ -38,7 +38,7 @@ export default function LeaderboardScreen() {
               <Text style={styles.rankText}>{index + 1}</Text>
             </View>
             <View style={styles.userMeta}>
-              <Text style={styles.name}>{item.displayName || 'Anonymous'}</Text>
+              <Text style={styles.name}>{item.display_name || 'Anonymous'}</Text>
               <Text style={styles.details}>
                 Last active: {item.lastActiveDate ? format(new Date(item.lastActiveDate), 'MMM d') : 'N/A'}
               </Text>

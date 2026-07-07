@@ -14,9 +14,9 @@ export default function ProfileScreen() {
     const loadProfile = async () => {
       const currentUser = await getCurrentUser();
       if (!currentUser) return;
-      const userDoc = await getUserData(currentUser.uid);
+      const userDoc = await getUserData(currentUser.id);
       setUserData(userDoc || currentUser);
-      const attendanceRecords = await getAttendanceForUser(currentUser.uid);
+      const attendanceRecords = await getAttendanceForUser(currentUser.id);
       const attendance = {};
       attendanceRecords.forEach((record) => {
         if (record.status === 'completed') {
@@ -48,7 +48,7 @@ export default function ProfileScreen() {
     <SafeAreaView edges={['top', 'bottom']} style={styles.container}>
       <StatusBar style="light" />
       <View style={styles.header}>
-        <Text style={styles.name}>{userData?.displayName || 'Fitness Friend'}</Text>
+        <Text style={styles.name}>{userData?.display_name || 'Fitness Friend'}</Text>
         <Text style={styles.handle}>{userData?.email || 'No email'}</Text>
       </View>
       <View style={styles.statsCard}>

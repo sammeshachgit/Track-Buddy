@@ -13,9 +13,9 @@ export default function HomeScreen({ navigation }) {
     const loadData = async () => {
       const currentUser = await getCurrentUser();
       if (!currentUser) return;
-      const userDoc = await getUserData(currentUser.uid);
+      const userDoc = await getUserData(currentUser.id);
       setUserData(userDoc || currentUser);
-      const attendanceRecords = await getAttendanceForUser(currentUser.uid);
+      const attendanceRecords = await getAttendanceForUser(currentUser.id);
       const todayKey = format(new Date(), 'yyyy-MM-dd');
       const todayRecord = attendanceRecords.find((record) => record.date === todayKey);
       if (todayRecord) {
@@ -30,7 +30,7 @@ export default function HomeScreen({ navigation }) {
       <StatusBar style="light" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerCard}>
-          <Text style={styles.greeting}>Good day, {userData?.displayName || 'Athlete'}</Text>
+          <Text style={styles.greeting}>Good day, {userData?.display_name || 'Athlete'}</Text>
           <Text style={styles.subText}>Keep your streak alive today.</Text>
           <View style={styles.streakRow}>
             <View style={styles.streakCard}>
@@ -52,7 +52,7 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.sectionTitle}>Today</Text>
           <Text style={styles.statText}>Status: {todayStatus}</Text>
           <Text style={styles.statText}>Total workouts: {userData?.totalWorkouts ?? 0}</Text>
-          <Text style={styles.statText}>Last active: {userData?.lastActiveDate ? new Date(userData.lastActiveDate).toLocaleDateString() : 'None'}</Text>
+          <Text style={styles.statText}>Last active: {userData?.last_active_date ? new Date(userData.last_active_date).toLocaleDateString() : 'None'}</Text>
         </View>
 
         <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('Groups')}>
